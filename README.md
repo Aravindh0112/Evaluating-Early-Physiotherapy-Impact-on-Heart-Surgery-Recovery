@@ -9,7 +9,7 @@ The Scottish government is considering funding an early physiotherapy programme 
 
 ## Objective
 
-- **Task 1**: A scientific report analyzing the effect of early physiotherapy on heart surgery recovery duration.
+- **Task 1**: A scientific group report analyzing the effect of early physiotherapy on heart surgery recovery duration.
 - **Task 2**: An individual non-technical executive summary that communicates the key findings for decision-makers.
 
 ## Files
