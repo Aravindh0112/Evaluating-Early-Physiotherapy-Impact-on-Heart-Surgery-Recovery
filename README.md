@@ -1,1 +1,36 @@
 # Heart-Surgery-Recovery-Statistical-Evaluation-of-Early-Physiotherapy
+
+# Early Physiotherapy Programme Evaluation: Heart Surgery Recovery Analysis
+
+This repository contains the final reports and analysis for the evaluation of an early physiotherapy programme for heart surgery recovery. The project was conducted as part of the **MATH11188 Statistical Research Skills** course.
+
+## Files
+
+- **SRS_Group_Report_s2596860.pdf**: This is the group report, which provides a scientific analysis of the early physiotherapy programme's effectiveness in reducing the length of hospital stay after heart surgery.
+- **Stat_Research_Skills_Modeling.Rmd**: This R Markdown file contains the statistical modeling and analysis conducted as part of the evaluation. It includes the methods and code used to analyze the data.
+- **s2596860_Individual_Executive_Summary.pdf**: This is the individual executive summary that provides a non-technical summary of the findings, aimed at informing decision-makers within the Scottish Parliament.
+
+## Project Description
+
+The Scottish government is considering funding an early physiotherapy programme to reduce recovery time after heart surgery. To aid in the decision-making process, this project evaluates the effectiveness of the programme based on data collected from two representative hospitals. The analysis focuses on the length of hospital stay (recovery duration) as a measure of the programme's impact.
+
+## Objective
+
+- **Task 1**: A scientific report analyzing the effect of early physiotherapy on heart surgery recovery duration.
+- **Task 2**: An individual non-technical executive summary that communicates the key findings for decision-makers.
+
+## How to Use
+
+To view the results and methodology:
+1. Open the group report PDF for the detailed analysis of the study.
+2. View the R Markdown file for the underlying statistical models and analysis used to derive conclusions.
+3. Read the individual executive summary for a concise, non-technical description of the findings.
+
+## Acknowledgements
+
+This project was completed as part of the MATH11188 Statistical Research Skills course at [University Name]. All data and tasks are fictional and were created for academic purposes.
+
+## License
+
+This repository is intended for academic use only. All rights to the data, reports, and content are retained by the course authors and creators.
+
