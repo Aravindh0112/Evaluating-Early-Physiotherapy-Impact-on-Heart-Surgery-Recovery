@@ -24,11 +24,4 @@ To view the results and methodology:
 2. View the R Markdown file for the underlying statistical models and analysis used to derive conclusions.
 3. Read the individual executive summary for a concise, non-technical description of the findings.
 
-## Acknowledgements
-
-This project was completed as part of the MATH11188 Statistical Research Skills course at [University Name]. All data and tasks are fictional and were created for academic purposes.
-
-## License
-
-This repository is intended for academic use only. All rights to the data, reports, and content are retained by the course authors and creators.
 
