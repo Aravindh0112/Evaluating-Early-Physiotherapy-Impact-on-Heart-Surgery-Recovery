@@ -1,0 +1,492 @@
+---
+title: "Stat Research Skills"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(GGally)
+library(tidyverse)
+library(autoReg)
+library(leaps)
+library(ggpubr)
+```
+
+## 1. Preprocessing the raw data
+
+Load data for both hospitals.
+
+```{r}
+hospital_1 <- read.csv("hospital_1_data.csv")
+hospital_2 <- read.csv("hospital_2_data.csv")
+```
+
+Combine data from both hospitals into single dataframe. However, added an extra column hospital_id for differentiation of source hospital.
+
+```{r}
+#Add a hospital ID before merging if you need to retain the source information
+hospital_1 <- hospital_1 %>% mutate(hospital_id = 1) 
+hospital_2 <- hospital_2 %>% mutate(hospital_id = 2)
+
+#Assuming hospital_2 has an extra column 'COPD risk score', which hospital_1 does not have
+hospital_1$COPD_risk_score <- NA #Add the missing column to hospital_1 with NA values
+
+#Combine the datasets
+combined_data <- bind_rows(hospital_1, hospital_2)
+```
+
+### Handle missing values - days_to_first_PT and PT_hours (Mode Imputation)
+
+```{r}
+na_counts <- colSums(is.na(combined_data))
+print("Number of NA values in each column:")
+print(na_counts)
+```
+
+#### days_to_first_PT
+
+Mode Imputation for days_to_first_PT - based on patient age
+
+```{r}
+
+min_age <- min(combined_data['age'])
+max_age <- max(combined_data['age'])
+
+min_age
+max_age
+```
+
+```{r}
+breaks <- seq(min_age,max_age+10, by = 10)
+breaks
+```
+
+```{r}
+
+labels <- paste0("[", breaks[-length(breaks)] + 1, "-", breaks[-1], "]")
+
+combined_data$age_bucket <- cut(combined_data$age, breaks = breaks, labels = labels, include.lowest = TRUE)
+
+print(combined_data[c("age","age_bucket")])
+```
+
+Age Bucket Classification :
+
+[39 - 48] ----- 1 [49 - 58] --- 2 [59 - 68] ----- 3 [69 - 78] ----- 4 [79 - 88] ----- 5
+
+```{r}
+na_indices_days_to_first_PT <- which(is.na(combined_data$days_to_first_PT))
+na_indices_days_to_first_PT
+```
+
+```{r}
+
+age_bucket_splits <- split(combined_data,combined_data$age_bucket)
+
+# Iterate over each age_bucket value
+for (age_bucket_value in names(age_bucket_splits)) {
+    cat("Age Bucket:", age_bucket_value, "\n")
+    
+    # Get unique values of 'days_to_first_PT' for the current age_bucket value
+    unique_days <- table(age_bucket_splits[[age_bucket_value]]$days_to_first_PT)
+    
+    # Print the unique values and their corresponding counts
+    print(unique_days)
+    cat("\n")
+}
+
+```
+
+```{r}
+
+combined_data[57, "days_to_first_PT"] <- as.numeric(1)
+combined_data[79, "days_to_first_PT"] <- as.numeric(2)
+combined_data[159, "days_to_first_PT"] <- as.numeric(1)
+combined_data[205, "days_to_first_PT"] <- as.numeric(1)
+combined_data[232, "days_to_first_PT"] <- as.numeric(2)
+```
+
+#### PT_hours
+
+```{r}
+
+age_bucket_splits <- split(combined_data,combined_data$age_bucket)
+
+# Iterate over each age_bucket value
+for (age_bucket_value in names(age_bucket_splits)) {
+    cat("Age Bucket:", age_bucket_value, "\n")
+    
+    # Get unique values of 'days_to_first_PT' for the current age_bucket value
+    unique_days <- table(age_bucket_splits[[age_bucket_value]]$PT_hours)
+    
+    # Print the unique values and their corresponding counts
+    print(unique_days)
+    cat("\n")
+}
+
+```
+
+```{r}
+na_indices_PT_hrs <- which(is.na(combined_data$PT_hours))
+na_indices_PT_hrs
+```
+
+```{r}
+
+for(i in na_indices_PT_hrs){
+  age <- combined_data[i, "age"]  
+  if(age>=40 & age<=49)
+    combined_data[i, "PT_hours"] <- 0.5
+  if(age>=50 & age<=59) 
+        combined_data[i, "PT_hours"] <- 0.5
+
+  if(age>=60 & age<=69)
+        combined_data[i, "PT_hours"] <- 0.5
+
+  if(age>=70 & age<=79)
+        combined_data[i, "PT_hours"] <- 0.5
+
+  if(age>=80 & age<=89)
+        combined_data[i, "PT_hours"] <- 0.666666666666667
+
+}
+
+```
+
+```{r}
+
+na_counts <- colSums(is.na(combined_data))
+
+print("Number of NA values in each column:")
+print(na_counts)
+
+```
+
+After this step, the only NA values remaining are COPD_risk_score, which is by design and not missing data.
+
+```{r}
+#Add a cardio risk group variable: low, medium, high
+combined_data_low <- combined_data %>% filter(cardio_risk_score<=2) %>% mutate(risk_group = "low")
+combined_data_med <- combined_data %>% filter(between(cardio_risk_score,3,4)) %>% mutate(risk_group = "medium")
+combined_data_high <- combined_data %>% filter(cardio_risk_score==5) %>% mutate(risk_group = "high")
+#merge together
+combined_data <- bind_rows(combined_data_low, combined_data_med, combined_data_high)
+
+#add age groups
+combined_data_A <- combined_data %>% filter(age<=50) %>% mutate(age_group = "A")
+combined_data_B <- combined_data %>% filter(between(age,51,65)) %>% mutate(age_group = "B")
+combined_data_C <- combined_data %>% filter(age>65) %>% mutate(age_group = "C")
+#merge together
+combined_data <- bind_rows(combined_data_A, combined_data_B, combined_data_C)
+
+#add PT intensity 
+combined_data_level1 <- combined_data %>% filter(PT_hours<=0.34) %>% mutate(PT_intensity = "L")
+combined_data_level2 <- combined_data %>% filter(between(PT_hours,0.34,0.67)) %>% mutate(PT_intensity = "M")
+combined_data_level3 <- combined_data %>% filter(PT_hours>0.67) %>% mutate(PT_intensity = "H")
+#merge together
+combined_data <- bind_rows(combined_data_level1, combined_data_level2, combined_data_level3)
+
+#Let's add an extra column called PT_duration
+combined_data <- combined_data %>% mutate(combined_data, PT_duration = days_to_discharge - days_to_first_PT)
+
+#convert to factors as appropriate
+combined_data$sex <- as.factor(combined_data$sex)
+combined_data$risk_group <- factor(combined_data$risk_group, levels = c("low","medium","high"))
+combined_data$PT_intensity <- factor(combined_data$PT_intensity, levels = c("L","M","H"))
+combined_data$cardio_risk_score <- as.factor(combined_data$cardio_risk_score)
+combined_data$COPD_risk_score <- as.factor(combined_data$COPD_risk_score)
+combined_data$age_group <- as.factor(combined_data$age_group)
+
+#separate HP2 dataset
+hp2data <- filter(combined_data,hospital_id==2)
+
+str(combined_data)
+
+```
+
+## 2. Correlations
+
+-   First let's check how the length of the PT treatment (`PT_duration`) is related to the variables `age`, `sex`, `cardio_risk_score` and `days_to_first_PT` :
+
+```{r}
+correlations1 <- combined_data %>%
+  select(sex, age, cardio_risk_score, PT_duration, days_to_first_PT) %>% 
+  GGally::ggpairs(aes(color=sex), columns = c("age", "cardio_risk_score", "PT_duration", "days_to_first_PT")) +
+  scale_colour_manual(values = c("magenta","skyblue")) +
+  scale_fill_manual(values = c("magenta","skyblue")) + theme(plot.title = element_text(hjust = 0.5)) 
+
+correlations1
+```
+
+-   There is weak positive correlation between `age` and `PT_duration` , both overall and within-sex.
+
+-   There is negligible correlation between `age` and `days_to_first_PT` and between `age` and `cardio_risk_score`
+
+-   The is some positive correlation between `cardio_risk_score` and `days_to_first_PT` , so the reason for starting PT later could be related to the cardio risk. This is more pronounced in women.
+
+-   A positive correlation exists also between `days_to_first_PT` and `PT_duration`. I think this fact is quite interesting. It seems to suggest that delaying the start of the PT leads to a longer PT treatment. To examine this further, let's first also consider the correlations between `PT_duration` , `PT_hours`, `days_to_discharge`, `days_to_first_PT`
+
+```{r}
+correlations2 <- combined_data %>%
+  select(sex, PT_hours, days_to_discharge, days_to_first_PT, PT_duration) %>% 
+  GGally::ggpairs(aes(color=sex), columns = c("PT_hours", "days_to_discharge", "days_to_first_PT", "PT_duration")) +
+  scale_colour_manual(values = c("magenta","skyblue")) +
+  scale_fill_manual(values = c("magenta","skyblue")) + theme(plot.title = element_text(hjust = 0.5)) 
+
+correlations2
+```
+
+-   First notice the large correlation between `PT_duration` and `days_to_discharge` ! This shouldn't be a big surprise: for any given patient, a longer PT treatment will obviously lead to a later discharge date.
+
+-   The second largest correlation is between `days_to_first_PT` and `days_to_discharge` . To simplify, let's **assume** **constant** PT treatment length. Then, a later start date later will obviously lead to a later discharge data. In that case, the natural question is: **why would the PT have to be started later for some patients?** **If there is no obvious reason, it should be advocated to start as early as possible.** But we saw above that there is a possible link between the start time of PT and the cardio risk score.... So the issue isn't as simple, because it could be that there is a real physical reason for why the PT cannot start earlier.
+
+-   What we could look at as well is **the effect of starting PT early on the duration of the treatment**. If we can show from the data that *early PT* leads to a *shorter treatment* and therefore to a shorter hospital stay, then I believe it to be an additional argument for its implementation. This can then be backed up with literature. Furthermore, we can investigate the effect of the PT intensity (`PT_hours`) on the duration. Looking at the correlations, it seems that increasing `PT_hours` could lead to a reduction of `PT_duration`.
+
+-   But we must decouple the question from the risk score. In what follows, I will divide the patients according to their cardio risk. Within each risk group, I will then plot `days_to_first_PT` vs. `PT_duration` as well as `PT_hours` vs. `PT_duration`
+
+## 3. Investigating within age groups and cardio risk groups:
+
+Let's first divide the patients into different the cardio risk groups, as the risk score could be a factor that delays the start of physiotherapy. I.e. we would expect people with higher risk score to start physiotherapy later, because of the possibility of complications. Let's examine it with a plot of risk score vs. start day of PT:
+
+```{r}
+plot(hp2data$COPD_risk_score,hp2data$risk_group)
+```
+
+```{r}
+cardio_risk_v_PTstart <- ggplot(combined_data, aes(x = risk_group, y = days_to_first_PT)) + geom_boxplot(aes(fill = risk_group))
+
+#also consider COPD risk score 
+COPD_risk_v_PTstart <- ggplot(hp2data, aes(x = COPD_risk_score, y = days_to_first_PT)) + geom_boxplot(aes(fill= COPD_risk_score))
+
+cardio_risk_v_PTstart; COPD_risk_v_PTstart
+```
+
+-   As we can see, there may be a delay in the start of PT for the higher cardio risk categories (4,5) compared to the lower risk categories (1,2,3), but COPD risk score does not seem to delay PT start. So cardio risk score could be a factor in the start date of PT. To analyse the effect of start date on discharge date, it therefore makes sense to **divide the patients into the different risk groups**.
+
+-   Within each risk category, we can then examine the influence of `PT_hours` and `days_to_first_PT` on the length of the hospital stay, measured either through `days_to_discharge` or `PT_duration`.
+
+```{r}
+#five cardio risk groups
+cardio1_group <- filter(combined_data,cardio_risk_score==1)
+cardio2_group <- filter(combined_data,cardio_risk_score==2)
+cardio3_group <- filter(combined_data,cardio_risk_score==3)
+cardio4_group <- filter(combined_data,cardio_risk_score==4)
+cardio5_group <- filter(combined_data,cardio_risk_score==5)
+
+#three cardio risk groups 
+cardio_low_risk <- bind_rows(cardio1_group,cardio2_group)
+cardio_medium_risk <- bind_rows(cardio3_group,cardio4_group)
+cardio_high_risk <- bind_rows(cardio5_group)
+```
+
+```{r}
+#sample sizes 
+#nrow(cardio_low_risk);nrow(cardio_medium_risk);nrow(cardio_high_risk)
+
+#average days to first PT
+mean(cardio_low_risk$days_to_first_PT, na.rm = T)
+mean(cardio_medium_risk$days_to_first_PT, na.rm=T)
+mean(cardio_high_risk$days_to_first_PT, na.rm=T)
+
+#average days to discharge
+mean(cardio_low_risk$days_to_discharge, na.rm = T)
+mean(cardio_medium_risk$days_to_discharge, na.rm=T)
+mean(cardio_high_risk$days_to_discharge, na.rm=T)
+```
+
+### 3.1 `days_to_first_PT` vs. `days_to_discharge`:
+
+```{r}
+#low riskgroup
+PTstart_v_discharge_low_cardio <- ggplot(cardio_low_risk, aes(x = days_to_first_PT, y = days_to_discharge)) + geom_boxplot(aes(fill = as.factor(days_to_first_PT))) + geom_smooth(method="lm")
+
+#medium riskgroup
+PTstart_v_discharge_medium_cardio <- ggplot(cardio_medium_risk, aes(x = days_to_first_PT, y = days_to_discharge)) + geom_boxplot(aes(fill = as.factor(days_to_first_PT))) + geom_smooth(method="lm")
+
+#very high riskgroup 5
+PTstart_v_discharge_high_cardio <- ggplot(cardio_high_risk, aes(x = days_to_first_PT, y = days_to_discharge)) + geom_boxplot(aes(fill = as.factor(days_to_first_PT))) + geom_smooth(method="lm")
+
+PTstart_v_discharge_low_cardio; PTstart_v_discharge_medium_cardio;PTstart_v_discharge_high_cardio
+```
+
+```{r}
+#stratified by age group
+ggplot(combined_data, aes(x = days_to_first_PT, y = days_to_discharge)) + geom_boxplot(aes(fill=as.factor(days_to_first_PT))) + scale_fill_manual(values = rep("red",6)) + geom_smooth(method="lm") + facet_wrap(~age_group) + theme(legend.position = "none") + labs(x="PT start day", y="Days to discharge")
+
+#stratified by risk group
+ggplot(combined_data, aes(x = days_to_first_PT, y = days_to_discharge)) + geom_boxplot(aes(fill=as.factor(days_to_first_PT))) + scale_fill_manual(values = rep("red",6)) + geom_smooth(method="lm") + facet_wrap(~risk_group) + theme(legend.position = "none") + labs(x="PT start day", y="Days to discharge")
+```
+
+-   Within each risk group, there seems to be a linear relationship between `days_to_first_PT` and `days_to_discharge`. If it were indeed linear, then the PT treatment duration is constant. This would suggests that starting the PT earlier **does not have a negative impact** on the length of the treatment and therefore should be adopted. So, unless there is a very specific reason for delaying, this should not be done. I.e. the extra few days of bedrest do not lead to a shorter treatment.
+
+### 3.2 `days_to_first_PT` vs. `PT_duration`
+
+```{r}
+#stratified by riskgroup
+ggplot(combined_data, aes(x = days_to_first_PT, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(days_to_first_PT))) + scale_fill_manual(values = rep("red",6)) + geom_smooth(method="lm") + facet_wrap(~risk_group) + theme(legend.position = "none") + labs(x="PT start day", y="PT duration")
+
+#stratified by agegroup
+ggplot(combined_data, aes(x = days_to_first_PT, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(days_to_first_PT))) + scale_fill_manual(values = rep("seagreen3",6)) + geom_smooth(method="lm") + facet_wrap(~age_group) + theme(legend.position = "none") + labs(x="PT start day", y="PT duration")
+
+#overall
+ggplot(combined_data, aes(x = days_to_first_PT, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(days_to_first_PT))) + scale_fill_manual(values = rep("red",6)) + theme(legend.position = "none") + labs(x="PT start day", y="PT duration")
+```
+
+-   I think this result is quite revealing: in the low/medium cardio risk group (1,2,3), the starting time of PT has little impact on the duration. In the higher groups, a *later* start of PT leads to a *longer* treatment. This is particularly true in the highest risk group (5). Here, starting on day 3 corresponds to an average of 4 days of physiotherapy, whereas starting on day 2, it's only 2 days of PT! This has two clear benefits: **(a) shorter PT treatment** and **(b) earlier PT start**. Both contribute to a shorter hosptital stay!
+
+-   Can we explain it with medical reasons? I think so: longer bedrest has an adverse effect on the body (this fact is well established in the literature). It can further be presumed that the physical condition of high risk (4,5) patients is a *worse* than that of low risk patients (1,2,3). Therefore, it seems logical that the effects of prolonged bedrest are *more severe* for the high risk patients, and that a *longer therapy* is necessary to recover. I.e. the "normal" amount of PT days doesn't suffice if you wait too long! On the other hand for the lower risk groups, the deterioration due to a few days of bedrest is not as severe and this would explain why a "standard" amount of PT is still sufficient. Overall, I think these plots shows that to an early start of PT has can have positive effect on the recovery time, but **only** in the higher risk patients.
+
+### 3.3 `PT_intensity` vs. `days_to_discharge`:
+
+```{r}
+#stratified by age group 
+ggplot(combined_data, aes(x = PT_intensity, y = days_to_discharge)) + geom_boxplot(aes(fill=as.factor(PT_intensity))) + scale_fill_manual(values = rep("red",6)) + geom_smooth(method="lm") + facet_wrap(~age_group) + theme(legend.position = "none") + labs(x="PT intensity", y="Days to discharge")
+
+#stratified by risk group 
+ggplot(combined_data, aes(x = PT_intensity, y = days_to_discharge)) + geom_boxplot(aes(fill=as.factor(PT_intensity))) + scale_fill_manual(values = rep("red",6)) + geom_smooth(method="lm") + facet_wrap(~risk_group) + theme(legend.position = "none") + labs(x="PT intensity", y="Days to discharge")
+```
+
+### 3.4 `PT_intensity` vs. `PT_duration`:
+
+```{r}
+#stratified by age group 
+ggplot(combined_data, aes(x = PT_intensity, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(PT_intensity))) + scale_fill_manual(values = rep("red",6)) + geom_smooth(method="lm") + facet_wrap(~age_group) + theme(legend.position = "none") + labs(x="PT intensity", y="PT duration")
+
+#stratified by risk group 
+ggplot(combined_data, aes(x = PT_intensity, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(PT_intensity))) + scale_fill_manual(values = rep("red",6)) + geom_smooth(method="lm") + facet_wrap(~risk_group) + theme(legend.position = "none") + labs(x="PT intensity", y="PT duration")
+
+#overall 
+ggplot(combined_data, aes(x = PT_intensity, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(PT_intensity))) + scale_fill_manual(values = rep("red",6)) + geom_smooth(method="lm") + theme(legend.position = "none") + labs(x="PT intensity", y="PT duration")
+```
+
+-   In these plots we can see that the intensity of PT treatment does seem to affect the duration of the PT treatment somewhat: high-intensity treatment results in fewer treatment days compared to low-intensity treatment
+
+-   Medically, this is supported in the literature through randomized control trials that did not notice any difference in the type of PT (here we have different intensities as "types"). So again, the results seem to confirm what is in the Santos paper: **what matters most is to start PT early, not the type/intensity of PT.** This is good for the hospitals in terms of keeping down treatment costs.
+
+-   However: is there a slight downward trend in the means of `PT_duration` with increasing `PT_hours` , both in the low and high risk groups? If that is true, then we should advocate an increase in the hours of PT together with an early start of PT.
+
+### 3.5 Final plots for report
+
+```{r}
+#PLOT 1 
+#stratified by age group 
+#pdf("PT_intensity_v_duration.pdf")
+ggplot(combined_data, aes(x = PT_intensity, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(PT_intensity))) + scale_fill_manual(values = rep("gold2",6)) + geom_smooth(method = "lm", se = TRUE) + facet_wrap(~age_group) + theme(legend.position = "none") + labs(x="PT intensity", y="PT duration") + ylim(0,6) + theme(plot.title = element_text(hjust=0.5), legend.position = "none", text = element_text(size = 30))
+#dev.off()
+
+
+#PLOT 2
+#pdf("PT_start_v_duration.pdf")
+#stratified by agegroup
+ggplot(combined_data, aes(x = days_to_first_PT, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(days_to_first_PT))) + scale_fill_manual(values = rep("gold2",6)) + facet_wrap(~age_group) + theme(plot.title = element_text(hjust=0.5), legend.position = "none", text = element_text(size = 30)) + labs(x="days to first PT", y="PT duration (days)") + ylim(0,6) + xlim(-0.5,4.5) 
+#dev.off()
+```
+
+## 3. Linear Models
+
+```{r}
+library(leaps)
+# Using regsubsets to explore all possible models without intercept
+subset_selection <- regsubsets(days_to_discharge ~ sex + age + PT_hours + cardio_risk_score + COPD_risk_score + days_to_first_PT, intercept = TRUE, data=combined_data, nbest=1, really.big=TRUE)
+
+# View the best models of each size based on an information criterion like BIC or AIC
+canditate_models <- summary(subset_selection)
+canditate_models
+```
+
+```{r}
+# Inspect adjusted R^2 and BIC
+canditate_models$adjr2
+canditate_models$aic
+canditate_models
+```
+
+```{r}
+lm_ <- lm(days_to_discharge ~ -1 + sex + age + PT_hours + cardio_risk_score + days_to_first_PT, combined_data)
+step(lm_)
+```
+
+```{r}
+summary(lm_)
+```
+
+```{r}
+lm0 <- lm(days_to_discharge ~ sex + age + PT_hours + cardio_risk_score + days_to_first_PT, combined_data)
+step(lm0)
+```
+
+```{r}
+lmfit <- lm(days_to_discharge ~ -1 + age + PT_hours + days_to_first_PT, combined_data)
+summary(lmfit)
+```
+
+```{r}
+LOS_lm <- function(age, PT_hours, days_to_first_PT){
+  #coefficients
+  b1 <- lmfit$coefficients[1]
+  b2 <- lmfit$coefficients[2]
+  b3 <- lmfit$coefficients[3]
+  #return prediction
+  b1*age + b2*PT_hours + b3*days_to_first_PT
+}
+
+
+LOS_lm(55,1,3)-LOS_lm(55,1,2)
+LOS_lm(55,1,2)-LOS_lm(55,1,1)
+```
+
+```{r}
+
+#stratified by age group 
+pdf("PT_intensity_v_duration.pdf")
+ggplot(combined_data, aes(x = PT_intensity, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(PT_intensity))) + scale_fill_manual(values = rep("gold2",6))  + facet_wrap(~age_group) + theme(legend.position = "none") + labs(x="PT intensity", y="PT duration") + ylim(0,6) + theme(plot.title = element_text(hjust=0.5), legend.position = "none", text = element_text(size = 30))
+dev.off()
+
+
+pdf("PT_start_v_duration.pdf")
+#stratified by agegroup
+ggplot(combined_data, aes(x = days_to_first_PT, y = PT_duration)) + geom_boxplot(aes(fill=as.factor(days_to_first_PT))) + scale_fill_manual(values = rep("gold2",6)) + facet_wrap(~age_group) + theme(plot.title = element_text(hjust=0.5), legend.position = "none", text = element_text(size = 20)) + labs(x="PT start (days)", y="PT duration (days)") + ylim(0,6)
+dev.off()
+```
+
+## 4. Generalised Linear Model
+
+```{r}
+glm1 <- glm(days_to_discharge ~ age + PT_hours  + days_to_first_PT + sex + cardio_risk_score, family = poisson, data = combined_data)
+summary(glm1)
+step(glm1)
+```
+
+```{r}
+glm_final <- glm(days_to_discharge ~ age + PT_hours  + days_to_first_PT, family = poisson, data = combined_data)
+summary(glm_final)
+```
+
+```{r}
+# For linear regression model
+library(Metrics)
+predicted_values_linear <- predict(lmfit)
+
+cat(length(combined_data$days_to_discharge), length(predicted_values_linear))
+```
+
+```{r}
+rmse_linear <- rmse(combined_data$days_to_discharge, predict(lmfit))
+rmse_linear
+```
+
+```{r}
+
+# For generalized linear model (e.g., Poisson regression)
+predicted_values_glm <- predict(glm_final, type = "response")
+residuals_glm <- combined_data$days_to_discharge - predicted_values_glm
+rmse_glm <- sqrt(mean(residuals_glm^2))
+rmse_glm
+```
