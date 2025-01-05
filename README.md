@@ -1,6 +1,4 @@
-# Heart-Surgery-Recovery-Statistical-Evaluation-of-Early-Physiotherapy
-
-# Early Physiotherapy Programme Evaluation: Heart Surgery Recovery Analysis
+# Evaluating Early Physiotherapy Impact on Heart Surgery Recovery
 
 This repository contains the final reports and analysis for the evaluation of an early physiotherapy programme for heart surgery recovery. The project was conducted as part of the **MATH11188 Statistical Research Skills** course.
 
