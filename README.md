@@ -2,11 +2,6 @@
 
 This repository contains the final reports and analysis for the evaluation of an early physiotherapy programme for heart surgery recovery. The project was conducted as part of the **MATH11188 Statistical Research Skills** course.
 
-## Files
-
-- **SRS_Group_Report_s2596860.pdf**: This is the group report, which provides a scientific analysis of the early physiotherapy programme's effectiveness in reducing the length of hospital stay after heart surgery.
-- **Stat_Research_Skills_Modeling.Rmd**: This R Markdown file contains the statistical modeling and analysis conducted as part of the evaluation. It includes the methods and code used to analyze the data.
-- **s2596860_Individual_Executive_Summary.pdf**: This is the individual executive summary that provides a non-technical summary of the findings, aimed at informing decision-makers within the Scottish Parliament.
 
 ## Project Description
 
@@ -16,6 +11,12 @@ The Scottish government is considering funding an early physiotherapy programme 
 
 - **Task 1**: A scientific report analyzing the effect of early physiotherapy on heart surgery recovery duration.
 - **Task 2**: An individual non-technical executive summary that communicates the key findings for decision-makers.
+
+## Files
+
+- The group report which provides a scientific analysis of the early physiotherapy programme's effectiveness in reducing the length of hospital stay after heart surgery.
+- The R Markdown file contains the statistical modeling and analysis conducted as part of the evaluation. It includes the methods and code used to analyze the data.
+- The individual executive summary that provides a non-technical summary of the findings, aimed at informing decision-makers within the Scottish Parliament.
 
 ## How to Use
 
